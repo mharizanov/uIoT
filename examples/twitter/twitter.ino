@@ -24,7 +24,7 @@ static byte myip[] = { 192,168,1,33 };
 static byte gwip[] = { 192,168,1,1 };
 
 // supertweet.net username:password in base64
-#define KEY   "bWhhcml6YW5vdjpxd2VydHk="
+#define KEY   "*******************"
 
 // ethernet interface mac address, must be unique on the LAN
 byte mymac[] = { 0x74,0x69,0x69,0x2D,0x30,0x31 };
