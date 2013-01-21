@@ -37,11 +37,8 @@ char page[] PROGMEM =
 ;
 
 void setup(){
- pinMode(4, OUTPUT); 
- pinMode(6, OUTPUT);
- digitalWrite(4,LOW);
- 
- digitalWrite(6,HIGH);   
+ pinMode(5, OUTPUT); 
+ digitalWrite(5,HIGH);   
  
   Serial.begin(57600);
   Serial.println("\n[backSoon]");
@@ -65,9 +62,9 @@ void setup(){
 
 void loop(){
 
- digitalWrite(6,HIGH);   
+ digitalWrite(5,HIGH);   
  delay(50);
- digitalWrite(6,LOW);
+ digitalWrite(5,LOW);
  delay(50);
  
   // DHCP expiration is a bit brutal, because all other ethernet activity and
