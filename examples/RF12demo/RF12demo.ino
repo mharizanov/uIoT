@@ -4,7 +4,7 @@
 
 // this version adds flash memory support, 2009-11-19
 
-#include <JeeLib.h>
+#include "RF12uiot.h"
 #include <util/crc16.h>
 #include <util/parity.h>
 #include <avr/eeprom.h>
@@ -683,7 +683,8 @@ void setup() {
     activityLed(0);
     Serial.begin(SERIAL_BAUD);
     Serial.print("\n[RF12demo.8]");
-
+ 
+ 
     if (rf12_config()) {
         config.nodeId = eeprom_read_byte(RF12_EEPROM_ADDR);
         config.group = eeprom_read_byte(RF12_EEPROM_ADDR + 1);
