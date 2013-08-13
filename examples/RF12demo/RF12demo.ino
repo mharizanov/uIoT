@@ -10,19 +10,13 @@
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
 
-// ATtiny's only support outbound serial @ 38400 baud, and no DataFlash logging
 
-#if defined(__AVR_ATtiny84__) ||defined(__AVR_ATtiny44__)
-#define SERIAL_BAUD 38400
-#else
-#define SERIAL_BAUD 57600
+#define SERIAL_BAUD 9600
 
 #define DATAFLASH   0   // check for presence of DataFlash memory on JeeLink
 #define FLASH_MBIT  16  // support for various dataflash sizes: 4/8/16 Mbit
 
 #define LED_PIN     5   // activity LED, comment out to disable
-
-#endif
 
 #define COLLECT 0x20 // collect mode, i.e. pass incoming without sending acks
 

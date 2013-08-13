@@ -13,7 +13,7 @@
 #include <WProgram.h> // Arduino 0022
 #endif
 
-// #define OPTIMIZE_SPI 1  // uncomment this to write to the RFM12B @ 8 Mhz
+#define OPTIMIZE_SPI 1  // uncomment this to write to the RFM12B @ 8 Mhz
 
 // pin change interrupts are currently only supported on ATmega328's
 // #define PINCHG_IRQ 1    // uncomment this to use pin-change interrupts
@@ -333,8 +333,8 @@ static void rf12_recvStart () {
     rf12_xfer(RF_RECEIVER_ON);
 }
 
-#include <RF12.h> 
-#include <Ports.h> // needed to avoid a linker error :(
+//#include <RF12.h> 
+//#include <Ports.h> // needed to avoid a linker error :(
 
 byte rf12_recvDone();
 
@@ -564,7 +564,7 @@ uint8_t rf12_initialize (uint8_t id, uint8_t band, uint8_t g) {
     rf12_xfer(0xCC77); // OB1，OB0, LPX,！ddy，DDIT，BW0 
     rf12_xfer(0xE000); // NOT USE 
     rf12_xfer(0xC800); // NOT USE 
-    rf12_xfer(0xC049); // 1.66MHz,3.1V 
+    rf12_xfer(0xC040); // 1.66MHz,3.1V 
 
     rxstate = TXIDLE;
 #if PINCHG_IRQ

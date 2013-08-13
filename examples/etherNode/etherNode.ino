@@ -8,11 +8,13 @@
 // May 2010, Andras Tucsni, http://opensource.org/licenses/mit-license.php
  
 #include <EtherCard.h>
-#include <JeeLib.h>
+#include "RF12uiot.h"
 #include <avr/eeprom.h>
 
 #define DEBUG   1   // set to 1 to display free RAM on web page
 #define SERIAL  1   // set to 1 to show incoming requests on serial port
+
+#define LED 5
 
 #define CONFIG_EEPROM_ADDR ((byte*) 0x10)
 
@@ -78,6 +80,8 @@ void setup(){
     Serial.begin(9600);
     Serial.println("\n[etherNode]");
 #endif
+    pinMode(LED,OUTPUT);
+    digitalWrite(LED,HIGH);
     loadConfig();
     
     if (ether.begin(sizeof Ethernet::buffer, mymac,10) == 0) 
@@ -87,6 +91,7 @@ void setup(){
 #if SERIAL
     ether.printIp("IP: ", ether.myip);
 #endif
+    digitalWrite(LED,LOW);
 }
 
 char okHeader[] PROGMEM = 
@@ -252,6 +257,7 @@ void loop(){
     // RFM12 loop runner, don't report acks
     if (rf12_recvDone() && rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0) {
         history_rcvd[next_msg][0] = rf12_hdr;
+        digitalWrite(LED,HIGH);
         for (byte i = 0; i < rf12_len; ++i)
             if (i < MESSAGE_TRUNC) 
                 history_rcvd[next_msg][i+1] = rf12_data[i];
@@ -266,6 +272,8 @@ void loop(){
 #endif
             rf12_sendStart(RF12_ACK_REPLY, 0, 0);
         }
+        
+         digitalWrite(LED,LOW);
     }
     
     // send a data packet out if requested
