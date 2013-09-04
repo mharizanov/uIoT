@@ -31,11 +31,48 @@ SdFile root;
 // Arduino Ethernet shield: pin 4
 // Adafruit SD shields and modules: pin 10
 // Sparkfun SD shield: pin 8
-const int chipSelect = A1;    
+const int chipSelect = A1;
+  
+#define SD_SELECT A1
+#define ETHERNET_SELECT 10
+#define RFM12_SELECT 2
 
 void setup()
 {
-  delay(2000);
+  delay(5000);
+  
+    // Set direction register for SCK and MOSI pin.
+  // MISO pin automatically overrides to INPUT.
+  // When the SS pin is set as OUTPUT, it can be used as
+  // a general purpose output port (it doesn't influence
+  // SPI operations).
+
+  pinMode(SCK, OUTPUT);
+  pinMode(MOSI, OUTPUT);
+  pinMode(SS, OUTPUT);
+  
+  digitalWrite(SCK, LOW);
+  digitalWrite(MOSI, LOW);
+  digitalWrite(SS, HIGH);
+
+  // Warning: if the SS pin ever becomes a LOW INPUT then SPI 
+  // automatically switches to Slave, so the data direction of 
+  // the SS pin MUST be kept as OUTPUT.
+  SPCR |= _BV(MSTR);
+  SPCR |= _BV(SPE);
+
+  pinMode(SD_SELECT, OUTPUT);
+  digitalWrite(SD_SELECT, HIGH); // deselect SD card
+
+
+  pinMode(RFM12_SELECT, OUTPUT);
+  digitalWrite(RFM12_SELECT, HIGH); // deselect RFM12B
+  
+  pinMode(ETHERNET_SELECT, OUTPUT);
+  digitalWrite(ETHERNET_SELECT, HIGH); // deselect ENC28J60
+
+
+
  // Open serial communications and wait for port to open:
   Serial.begin(9600);
    while (!Serial) {
