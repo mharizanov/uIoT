@@ -1,3 +1,30 @@
+/*
+  NanodeRF_multinode with SD card based configuration
+  
+  See http://harizanov.com/2013/09/emoncms-base-station-with-sd-card-based-ini-file-configuration/
+
+  Relay's data recieved from wireless nodes to emoncms
+  Decodes reply from server to set software real time clock
+  Relay's time data to emonglcd - and any other listening nodes.
+  Looks for 'ok' reply from request to verify data reached emoncms
+
+  emonBase Documentation: http://openenergymonitor.org/emon/emonbase
+
+  Authors: Trystan Lea and Glyn Hudson
+  Part of the: openenergymonitor.org project
+  Licenced under GNU GPL V3
+  http://openenergymonitor.org/emon/license
+
+  EtherCard Library by Jean-Claude Wippler and Andrew Lindsay
+  JeeLib Library by Jean-Claude Wippler
+
+  THIS SKETCH REQUIRES:
+  
+  Libraries in the standard arduino libraries folder:
+	- EtherCard		https://github.com/jcw/ethercard/
+
+*/
+
 #include <avr/wdt.h>
 #include <petit_fatfs.h>
 FATFS fs;          // Work area (file system object) for the volume
@@ -13,6 +40,9 @@ FATFS fs;          // Work area (file system object) for the volume
 // Ethernet
 //--------------------------------------------------------------------------
 #include <EtherCard.h>		//https://github.com/jcw/ethercard 
+
+Stash stash;
+static byte session;
 
 //IP address of remote sever, only needed when posting to a server that has not got a dns domain name (staticIP e.g local server) 
 byte Ethernet::buffer[700];
@@ -53,7 +83,7 @@ int dns_status = 0;
 int data_ready=0;                         // Used to signal that emontx data is ready to be sent
 unsigned long last_rf;                    // Used to check for regular emontx data - otherwise error
 
-char line_buf[50];                        // Used to store line of http reply header
+//char line_buf[50];                        // Used to store line of http reply header
 
 unsigned long time60s = -50000;
 
@@ -77,8 +107,8 @@ struct StoreStruct {
   // The default values
   RF12_868MHZ, 210, 27, false,
   {192,168,1,35},{192,168,1,1},{8,8,8,8},{213,138,101,177},{ 0x42,0x31,0x42,0x21,0x30,0x31 },
-  false,false,
-  "emoncms.org","ff95de87c7ea7b114cdd99060a890274","/emoncms"
+  true,false,
+  "emoncms.org","***** API ********",""
 };
 
 void loadConfig() {
@@ -117,7 +147,7 @@ void setup()
   if (EEPROM.read(CONFIG_START + 0) == CONFIG_VERSION[0] &&
       EEPROM.read(CONFIG_START + 1) == CONFIG_VERSION[1] &&
       EEPROM.read(CONFIG_START + 2) == CONFIG_VERSION[2])
-     loadConfig();    //If these are our settings, load them
+      delay(50); //     loadConfig();    //If these are our settings, load them
   else
      saveConfig();    //Else create settings with default values      
       
@@ -249,25 +279,56 @@ void loop () {
   
 
   if (data_ready) {
+    // first capture the freeCount
+    int freeCount = stash.freeCount();
+
+    // reset the stash if freeCount has dropped to 10
+    if (freeCount < 10) {
+      stash.initMap(56);
+    }
+
+    byte sd = stash.create();
+    
     Serial.print(F("Data sent: ")); Serial.print(storage.website); Serial.println(str.buf); // print to serial json string
 
-    // Example of posting to emoncms.org http://emoncms.org 
-    // To point to your account just enter your WRITE APIKEY 
+    stash.println(str.buf);    
+    stash.save();
+
+   // generate the header with payload
+   Stash::prepare(PSTR("GET http://$S$S HTTP/1.0" "\r\n"
+                        "Host: $S" "\r\n"
+                        "\r\n"),
+                        storage.website,
+                        str.buf,
+                        storage.website);
+
+    // send the packet - this also releases all stash buffers once done
+    session = ether.tcpSend();
+
     ethernet_requests ++;    
-    ether.browseUrl(PSTR("") ,str.buf, storage.website, my_callback);
     data_ready = 0;
   }
 
+  const char* reply = ether.tcpReply(session);
+  if(reply != 0) {     
+    ethernet_requests = 0; ethernet_error = 0;   
+    
+    reply=(strstr_P(reply,PSTR("\r\n\r\n"))+4); // Skip thru the HTTP headers
+    char* eol = strstr_P(reply,PSTR("\r\n"));
+    *eol='\0';   // Terminate the reply line
+    my_callback((char *)reply);    
+  }
    
   if (ethernet_requests > 10) delay(10000); // Reset if more than 10 request attempts have been tried without a reply
 
-  if ((millis()-time60s)>60000)
+  if ((millis()-time60s)>60000 && data_ready==0)
   {
     time60s = millis();                                                 // reset lastRF timer
     str.reset();
     str.print(storage.basedir); str.print(F("/time/local.json?"));str.print(F("apikey=")); str.print(storage.api);
     Serial.println(F("Time request sent"));
-    ether.browseUrl(PSTR("") ,str.buf, storage.website, my_callback);
+    data_ready=1;
+//    ether.browseUrl(PSTR("") ,str.buf, storage.website, my_callback);
   }
 }
 //**********************************************************************************************************************
@@ -276,8 +337,7 @@ void loop () {
 // Ethernet callback
 // recieve reply and decode
 //-----------------------------------------------------------------------------------
-static void my_callback (byte status, word off, word len) {
-  int lsize =   get_reply_data(off);
+static void my_callback (char * line_buf) {
 
   Serial.print(F("Got:"));     Serial.println(line_buf);
     
