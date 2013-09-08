@@ -170,26 +170,24 @@ void readConfig(int err, char * fp)
   if (err == 0)
   {  
     Serial.print(F("Reading File ")); Serial.print(fp); Serial.print(F(" ;err = ")); Serial.println(err);
-          
-    char * s = (char*)calloc(65, sizeof(char));
+    str.reset();
     int bytes_read;
     
     do
     {
-        digitalWrite(LED,HIGH);
-	PFFS.read_file(s, 64, &bytes_read);
+	PFFS.read_file(str.buf, sizeof(str.buf), &bytes_read);
         int i;
-        for(i=0;i<bytes_read && (s[i]!='\n' && s[i]!='\r');i++) {}  //Scan to find the end of line, if exists at all
-        s[i]='\0';                                                  //Terminate the line
-        if(s[i+1]=='\n' || s[i+1]=='\r')                            //If the next char is NL or CR, skip it
+        for(i=0;i<bytes_read && (str.buf[i]!='\n' && str.buf[i]!='\r');i++) {}  //Scan to find the end of line, if exists at all
+        str.buf[i]='\0';                                                  //Terminate the line
+        if(str.buf[i+1]=='\n' || str.buf[i+1]=='\r')                            //If the next char is NL or CR, skip it
           i++;
         pf_lseek(fs.fptr - (bytes_read-i-1));                       //Position the file pointer at the newline character so that next time we read the next line
 
-        char * keyStart=skipSpace(s);                            
+        char * keyStart=skipSpace(str.buf);                            
         
         if(*keyStart!='#') {  //Lines starting with # are comments. Ignore them
 
-        char *ep = strchr(s, '=');  //Find '=', if any, in the line
+        char *ep = strchr(str.buf, '=');  //Find '=', if any, in the line
          if (ep != NULL) { 
            *ep='\0';
            ep++;
@@ -199,15 +197,9 @@ void readConfig(int err, char * fp)
            parseLine(keyStart,ep);       // see if we can make sense of this KEY/VALUE pair    
          }
         }
-        
-        delay(50);
-        digitalWrite(LED,LOW);        
-
     }
-    while (bytes_read == 64);
+    while (bytes_read == sizeof(str.buf));
 
-
-    free(s);
   }
   else
   {

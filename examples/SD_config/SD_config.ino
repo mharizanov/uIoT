@@ -108,7 +108,7 @@ struct StoreStruct {
   RF12_868MHZ, 210, 27, false,
   {192,168,1,35},{192,168,1,1},{8,8,8,8},{213,138,101,177},{ 0x42,0x31,0x42,0x21,0x30,0x31 },
   true,false,
-  "emoncms.org","***** API ********",""
+  "emoncms.org","****API****",""
 };
 
 void loadConfig() {
@@ -141,13 +141,19 @@ void setup()
   
   pinMode(LED,OUTPUT);
   digitalWrite(LED,HIGH);
-    
+
+/*
+ // RESET EEPROM
+  for (int i = 0; i < E2END; i++)
+    EEPROM.write(i, 0xFF);
+*/
+
   delay(5000);
  
   if (EEPROM.read(CONFIG_START + 0) == CONFIG_VERSION[0] &&
       EEPROM.read(CONFIG_START + 1) == CONFIG_VERSION[1] &&
       EEPROM.read(CONFIG_START + 2) == CONFIG_VERSION[2])
-      delay(50); //     loadConfig();    //If these are our settings, load them
+     loadConfig();    //If these are our settings, load them
   else
      saveConfig();    //Else create settings with default values      
       
@@ -171,8 +177,8 @@ void setup()
   Serial.print(F("NodeID: ")); Serial.println(storage.nodeID);
   Serial.print(F("Band: ")); 
 
-  static word bands[3] = { 433, 868, 915 };
-  Serial.print(bands[storage.band-1],DEC);
+  static word PROGMEM bands[3] = { 433, 868, 915 };
+  Serial.print(pgm_read_word(&bands[storage.band-1]),DEC);
   Serial.println(F(" MHz "));
 
   
@@ -270,14 +276,22 @@ void loop () {
     rf_error=1;
   }
 
-  //-----------------------------------------------------------------------------------------------------------------
-  // 3) Send data via ethernet
-  //-----------------------------------------------------------------------------------------------------------------
-
-  word len = ether.packetReceive();
-  word pos = ether.packetLoop(len);
+  //Request time 
+  if ((millis()-time60s)>60000 && data_ready==0)
+  {
+    time60s = millis();                                                 // reset lastRF timer
+    str.reset();
+    str.print(storage.basedir); str.print(F("/time/local.json?"));str.print(F("apikey=")); str.print(storage.api);
+    Serial.println(F("Time request sent"));
+    data_ready=1;
+  }
   
+  //-----------------------------------------------------------------------------------------------------------------
+  // 3) Send data, if ready, via ethernet
+  //-----------------------------------------------------------------------------------------------------------------
 
+  ether.packetLoop(ether.packetReceive());
+  
   if (data_ready) {
     // first capture the freeCount
     int freeCount = stash.freeCount();
@@ -287,7 +301,7 @@ void loop () {
       stash.initMap(56);
     }
 
-    byte sd = stash.create();
+    stash.create();
     
     Serial.print(F("Data sent: ")); Serial.print(storage.website); Serial.println(str.buf); // print to serial json string
 
@@ -311,25 +325,12 @@ void loop () {
 
   const char* reply = ether.tcpReply(session);
   if(reply != 0) {     
-    ethernet_requests = 0; ethernet_error = 0;   
-    
     reply=(strstr_P(reply,PSTR("\r\n\r\n"))+4); // Skip thru the HTTP headers
-    char* eol = strstr_P(reply,PSTR("\r\n"));
-    *eol='\0';   // Terminate the reply line
+    *strstr_P(reply,PSTR("\r\n")) = '\0'; // Terminate the reply line
     my_callback((char *)reply);    
   }
    
   if (ethernet_requests > 10) delay(10000); // Reset if more than 10 request attempts have been tried without a reply
-
-  if ((millis()-time60s)>60000 && data_ready==0)
-  {
-    time60s = millis();                                                 // reset lastRF timer
-    str.reset();
-    str.print(storage.basedir); str.print(F("/time/local.json?"));str.print(F("apikey=")); str.print(storage.api);
-    Serial.println(F("Time request sent"));
-    data_ready=1;
-//    ether.browseUrl(PSTR("") ,str.buf, storage.website, my_callback);
-  }
 }
 //**********************************************************************************************************************
 
