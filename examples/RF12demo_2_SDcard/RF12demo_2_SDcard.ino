@@ -10,7 +10,7 @@
 File myFile;
 const int chipSelect = A1;    
 
-#include <JeeLib.h>
+#include "RF12uiot.h"
 #include <util/crc16.h>
 #include <util/parity.h>
 #include <avr/eeprom.h>
@@ -19,9 +19,9 @@ const int chipSelect = A1;
 // ATtiny's only support outbound serial @ 38400 baud, and no DataFlash logging
 
 #if defined(__AVR_ATtiny84__) ||defined(__AVR_ATtiny44__)
-#define SERIAL_BAUD 38400
+#define SERIAL_BAUD 9600
 #else
-#define SERIAL_BAUD 57600
+#define SERIAL_BAUD 9600
 
 #define DATAFLASH   0   // check for presence of DataFlash memory on JeeLink
 #define FLASH_MBIT  16  // support for various dataflash sizes: 4/8/16 Mbit
@@ -701,7 +701,7 @@ void setup() {
         saveConfig();
     }
 
-    df_initialize();
+//    df_initialize();
     
     showHelp();
     
