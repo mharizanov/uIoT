@@ -73,21 +73,29 @@ public:
 };
 PacketBuffer str;
 
-int ethernet_error = 0;                   // Etherent (controller/DHCP) error flag
-int rf_error = 0;                         // RF error flag - high when no data received 
-int ethernet_requests = 0;                // count ethernet requests without reply                 
+byte ethernet_error = 0;                   // Etherent (controller/DHCP) error flag
+byte rf_error = 0;                         // RF error flag - high when no data received 
+byte ethernet_requests = 0;                // count ethernet requests without reply                 
 
-int dhcp_status = 0;
-int dns_status = 0;
+byte dhcp_status = 0;
+byte dns_status = 0;
 
-int data_ready=0;                         // Used to signal that emontx data is ready to be sent
+byte data_ready=0;                         // Used to signal that emontx data is ready to be sent
 unsigned long last_rf;                    // Used to check for regular emontx data - otherwise error
-
-//char line_buf[50];                        // Used to store line of http reply header
 
 unsigned long time60s = -50000;
 
 byte needsave=0;          // EEPROM settings need saving?
+
+typedef struct { byte node_id; unsigned int feed_id; float feed_val;} askStruct;			// new payload def for time data reception
+askStruct askpayload; 
+
+#define QTIMEOUT 3000  // How many ms timeout waiting for emoncms to reply
+static byte asking_nodeid=0;
+static unsigned int  asking_feedid=0;
+static unsigned long asking_time = 0;
+static byte asking_session = 254;
+
 
 #include <EEPROM.h>
 
@@ -105,10 +113,10 @@ struct StoreStruct {
 } storage = {
   CONFIG_VERSION,
   // The default values
-  RF12_868MHZ, 210, 27, false,
+  RF12_868MHZ, 210, 16, false,
   {192,168,1,35},{192,168,1,1},{8,8,8,8},{213,138,101,177},{ 0x42,0x31,0x42,0x21,0x30,0x31 },
   true,false,
-  "emoncms.org","****API****",""
+  "emoncms.org","ff95de87c7ea7b114cdd99060a890274",""
 };
 
 void loadConfig() {
@@ -148,7 +156,7 @@ void setup()
     EEPROM.write(i, 0xFF);
 */
 
-  delay(5000);
+  for (byte i=0;i<5;i++,delay(1000),Serial.print('.'));
  
   if (EEPROM.read(CONFIG_START + 0) == CONFIG_VERSION[0] &&
       EEPROM.read(CONFIG_START + 1) == CONFIG_VERSION[1] &&
@@ -318,7 +326,16 @@ void loop () {
 
     // send the packet - this also releases all stash buffers once done
     session = ether.tcpSend();
+    
+    //If a remote node has queried us for emoncms value, save the session # so we can identify the reply (if any)
+    if(asking_session == 255) asking_session=session;
+    
+    if(millis() - asking_time > QTIMEOUT) { // clearout timeout so other nodes can query the base station for emoncms feed values
+      asking_session=254;
+    }
 
+    Serial.print(F("Session: ")); Serial.print(session); Serial.print(F(" , asking_session: ")); Serial.println(asking_session);
+    
     ethernet_requests ++;    
     data_ready = 0;
   }
@@ -366,15 +383,42 @@ static void my_callback (char * line_buf) {
       rf12_sendWait(0);
     }
   }
+  else if(session==asking_session && (millis()-asking_time <QTIMEOUT)) { // Did we send a query to emoncms the last 5 secs? Older than that is probably 'dirty' data
+    
+    Serial.print(F("Got emoncms feed reply: ")); 
+      
+    if(line_buf[0]=='"') {  // looks like emoncms returned a value, these are enclosed in quote
+
+        *strstr(line_buf + 1,"\"") = '\0'; // Terminate the reply line
+
+        Serial.println(line_buf +1);
+//        askpayload.feed_val=NULL;
+        askpayload.feed_val = atof(line_buf + 1);
+        askpayload.feed_id = asking_feedid;
+        askpayload.node_id = storage.nodeID;
+//        if(askpayload.feed_val != NULL) {  // is this a number?
+          Serial.print(F("Sending the value ")); Serial.print(askpayload.feed_val); Serial.print(F(" to node ")); Serial.print(asking_nodeid);  Serial.print(F("; feedid= ")); Serial.println(asking_feedid);
+          // send that value to the asking node
+          int i = 0; while (!rf12_canSend() && i<10) {rf12_recvDone(); i++;}
+          rf12_sendStart(asking_nodeid, &askpayload, sizeof askpayload);
+          rf12_sendWait(0);
+          
+          // cleanup
+          asking_time=millis()-40000; // clearout timeout so other nodes can query the base station for emoncms feed values
+          asking_session=254;
+          
+        //}
+      }
+  }
 }
 
 void checkRF() {
-  
-   if (rf12_recvDone() && rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0) {
+
+  if(rf12_recvDone() && rf12_crc == 0 ) {
+//   rf12_hdr & RF12_HDR_DST >>>>> Only care about broadcasted packages
+   if ( (rf12_hdr & RF12_HDR_CTL) == 0 && (rf12_hdr & RF12_HDR_DST) == 0 ) {
       
         digitalWrite(LED,HIGH);
-        int node_id = (rf12_hdr & 0x1F);
-        byte n = rf12_len;
       
         if(RF12_WANTS_ACK){
            byte i = 0; while (!rf12_canSend() && i<10) {rf12_recvDone(); i++;}  // if ready to send 
@@ -387,9 +431,9 @@ void checkRF() {
         str.print(storage.basedir); str.print(F("/api/post.json?"));
     
         str.print(F("apikey=")); str.print(storage.api);
-        str.print(F("&node="));  str.print(node_id);
+        str.print(F("&node="));  str.print(rf12_hdr & 0x1F);
         str.print(F("&csv="));
-        for (byte i=0; i<n; i+=2)
+        for (byte i=0; i<rf12_len; i+=2)
         {
           unsigned int num = ((unsigned char)rf12_data[i+1] << 8 | (unsigned char)rf12_data[i]);
           if (i) str.print(",");
@@ -404,8 +448,34 @@ void checkRF() {
         delay(20);
         digitalWrite(LED, LOW);
       
+  } else if( ((millis()-asking_time) > QTIMEOUT) ) {  // A packed to us? did at least QTIMEOUT msec expire before we are again queried by another node?
+              
+        digitalWrite(LED,HIGH);
+
+        askpayload = *(askStruct*) rf12_data;   
+
+        Serial.println(F("Got emoncms feed val request!"));
+        
+        asking_nodeid = askpayload.node_id;
+        asking_feedid = askpayload.feed_id;
+        asking_time = millis();
+        asking_session = 255; //Flag that the session id needs to be stored
+  
+        str.reset();   // prepare a query string to obtain emonms feed value 
+        str.print(storage.basedir); str.print(F("/feed/value.json?"));
+        str.print(F("apikey=")); str.print(storage.api);
+        str.print(F("&id="));  str.print(askpayload.feed_id);  
+        str.print("\0"); 
+          
+        data_ready = 1; 
+        last_rf = millis(); 
+        rf_error=0;
+  
+        delay(20);
+        digitalWrite(LED, LOW);
+    
+  } 
   }
- 
 }
 
 
